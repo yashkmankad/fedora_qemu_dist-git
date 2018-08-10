@@ -1,0 +1,4 @@
+io-github-autotest-qemu.boot
+io-github-autotest-qemu.reboot
+type_specific.io-github-autotest-qemu.migrate.default.tcp
+io-github-autotest-qemu.shutdown

@@ -1,0 +1,108 @@
+---
+# tests that run in a classic context
+- hosts: localhost
+  vars:
+    vt_type: qemu
+    vt_machine_type: 'i440fx'
+
+  tags:
+  - classic
+
+  tasks:
+  # If packages are installed, this will not update them
+  # If they are not installed, it will install from the default repo
+  - name: Check to see if virtualization packages are installed
+    dnf:
+      name: "{{ item }}"
+      state: present
+    with_items:
+      - qemu-kvm
+      - libvirt
+      - libvirt-python
+      - libvirt-devel
+
+  - name: Install packages required to install Avocado from source
+    dnf:
+      name: "{{ item }}"
+      state: latest
+    with_items:
+      - git
+      - make
+
+  - name: Clone Avocado framework
+    git:
+      repo: git://github.com/avocado-framework/avocado.git
+      dest: /tmp/avocado
+      clone: yes
+
+  - name: Install Avocado framework from source
+    shell: "make install"
+    args:
+      chdir: /tmp/avocado/
+
+  - name: Install optional plugins required for Avocado-VT tests
+    shell: "python setup.py install"
+    args:
+      chdir: "/tmp/avocado/optional_plugins/{{ item }}"
+    with_items:
+      - varianter_yaml_to_mux
+      - loader_yaml
+
+  - name: Install required packages for Avocado-VT build and installation
+    package:
+      name: "{{ item }}"
+      state: present
+    with_items:
+      - autotest-framework
+      - xz
+      - iproute
+      - iputils
+      - glibc-headers
+      - nc
+      - python-aexpect
+      - python-netaddr
+      - python-netifaces
+      - python-simplejson
+      - tcpdump
+      - gcc
+      - python-devel
+
+  - name: Clone Avocado-VT source code
+    git:
+      repo: git://github.com/avocado-framework/avocado-vt.git
+      dest: /tmp/avocado-vt
+      clone: yes
+
+  - name: Install Avocado-VT from source
+    shell: "make install"
+    args:
+      chdir: /tmp/avocado-vt/
+
+  - name: Cleanup temp dirs
+    file:
+        state: absent
+        path: "{{ item }}"
+    with_items:
+      - /tmp/avocado/
+      - /tmp/avocado-vt/
+
+  - name: Start the libvirtd service
+    service:
+      name: libvirtd
+      state: started
+      enabled: yes
+
+  # Runs the bootstrap command which lets Avocado run virtualization tests
+  # and also downloads the JeOS image
+  - name: Avocado-VT bootstrap
+    shell: avocado vt-bootstrap --vt-type {{ vt_type }} --yes-to-all
+
+  # Runs the basic set of tests listed in the devel_minimum file
+  - name: Run avocado tests
+    shell: >
+      avocado run --vt-type {{ vt_type }} --vt-machine-type {{ vt_machine_type }}
+      $(cat {{ test_suite }}.txt)
+      --vt-extra-params 'verify_host_dmesg = no'
+    vars:
+      - test_suite: devel_minimum
+    ignore_errors: yes
